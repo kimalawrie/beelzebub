@@ -256,6 +256,10 @@ export default function Competition() {
   const latencyColor = (latency?.currentQuality === "green") ? "hsl(160 100% 45%)" :
     (latency?.currentQuality === "yellow") ? "hsl(38 100% 60%)" : "hsl(0 72% 55%)";
 
+  // Safe number formatter — never crashes on undefined
+  const safe = (v: number | undefined | null, decimals = 2) =>
+    v != null ? v.toFixed(decimals) : "—";
+
   return (
     <div className="p-5 space-y-4 min-h-full">
       {/* Header */}
@@ -471,9 +475,9 @@ export default function Competition() {
               </CardTitle>
               {latency && (
                 <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${latency.currentQuality === "green" ? "bg-green-400" : latency.currentQuality === "yellow" ? "bg-yellow-400" : "bg-red-500 animate-pulse"}`} />
+                  <div className={`w-2 h-2 rounded-full ${latency?.currentQuality === "green" ? "bg-green-400" : latency?.currentQuality === "yellow" ? "bg-yellow-400" : "bg-red-500 animate-pulse"}`} />
                   <span className="font-mono text-xs font-bold" style={{ color: latencyColor }}>
-                    {latency.avgMs.toFixed(0)}ms avg
+                    {safe(latency?.avgMs, 0)}ms avg
                   </span>
                 </div>
               )}
@@ -501,15 +505,15 @@ export default function Competition() {
               <div className="grid grid-cols-3 gap-2 px-2 mt-3 text-xs">
                 <div>
                   <div className="text-muted-foreground">Average</div>
-                  <div className="font-mono font-semibold text-foreground">{latency.avgMs.toFixed(1)}ms</div>
+                  <div className="font-mono font-semibold text-foreground">{safe(latency?.avgMs, 1)}ms</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">P99</div>
-                  <div className="font-mono font-semibold text-foreground">{latency.p99Ms.toFixed(1)}ms</div>
+                  <div className="font-mono font-semibold text-foreground">{safe(latency?.p99Ms, 1)}ms</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Spikes</div>
-                  <div className={`font-mono font-semibold ${latency.latencySpikes > 3 ? "text-yellow-400" : "text-foreground"}`}>{latency.latencySpikes}</div>
+                  <div className={`font-mono font-semibold ${(latency?.latencySpikes ?? 0) > 3 ? "text-yellow-400" : "text-foreground"}`}>{latency?.latencySpikes ?? 0}</div>
                 </div>
               </div>
             )}

@@ -312,7 +312,8 @@ export default function Dashboard() {
   // WebSocket for real-time OFI streaming
   useEffect(() => {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${proto}//__PORT_5000__/ws`;
+    // Use same host as the page — works on Railway, AWS, and local dev
+    const wsUrl = `${proto}//${window.location.host}/ws`;
     let ws: WebSocket;
     let reconnectTimer: any;
 
