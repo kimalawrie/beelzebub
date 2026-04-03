@@ -96,7 +96,10 @@ function generateSignal(
 export async function fetchHistoricalData(symbol: string, days = 90): Promise<InsertPriceCandle[]> {
   const coinMap: Record<string, string> = {
     BTC: "bitcoin", ETH: "ethereum", SOL: "solana", BNB: "binancecoin",
-    ADA: "cardano", DOGE: "dogecoin", AVAX: "avalanche-2", MATIC: "matic-network",
+    XRP: "ripple", DOGE: "dogecoin", ADA: "cardano", AVAX: "avalanche-2",
+    DOT: "polkadot", MATIC: "matic-network", LINK: "chainlink", LTC: "litecoin",
+    UNI: "uniswap", ATOM: "cosmos", NEAR: "near", APT: "aptos",
+    OP: "optimism", ARB: "arbitrum", FIL: "filecoin", INJ: "injective-protocol",
   };
   const coinId = coinMap[symbol] || "bitcoin";
 

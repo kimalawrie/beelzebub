@@ -87,9 +87,17 @@ export function registerRoutes(httpServer: Server, app: Express) {
   // ── Simulation ────────────────────────────────────────────────────────────
   app.post("/api/simulate", async (req, res) => {
     try {
-      const { symbol = "BTC" } = req.body;
+      // Use scanner's best coin if no symbol specified
+      let { symbol } = req.body;
+      if (!symbol || symbol === "BTC") {
+        const best = getBestCoin();
+        if (best) symbol = best.displayName; // e.g. "SOL", "ETH"
+      }
+      symbol = symbol || "BTC";
+      // Update config to reflect the chosen symbol
+      storage.upsertBotConfig({ symbol });
       const result = await runDemoSimulation(symbol);
-      res.json({ success: true, ...result });
+      res.json({ success: true, symbol, ...result });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 

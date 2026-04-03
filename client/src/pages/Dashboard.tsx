@@ -346,10 +346,15 @@ export default function Dashboard() {
 
   const activeOFI = liveOFI ?? ofiSummary ?? null;
 
+  const { data: bestCoin } = useQuery<{ displayName: string; signalStrength: number; ofiDirection: string } | null>({
+    queryKey: ["/api/scanner/best"],
+    refetchInterval: 3000,
+  });
+
   const simulateMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/simulate", { symbol: config?.symbol ?? "BTC" }),
-    onSuccess: () => {
-      toast({ title: "Simulation complete", description: "Historical data processed and trades simulated." });
+    mutationFn: () => apiRequest("POST", "/api/simulate", {}),
+    onSuccess: (data: any) => {
+      toast({ title: `Simulation complete — ${data?.symbol ?? config?.symbol ?? "BTC"}`, description: "Historical data processed and trades simulated." });
       qc.invalidateQueries();
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -419,6 +424,16 @@ export default function Dashboard() {
             {wsConnected ? <Wifi size={11} /> : <WifiOff size={11} />}
             <span>{wsConnected ? "Live" : "Polling"}</span>
           </div>
+          {/* Best coin indicator */}
+          {bestCoin && (bestCoin as any).displayName && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent border border-border text-xs">
+              <span className="text-muted-foreground">Best signal:</span>
+              <span className="font-mono font-bold text-primary">{(bestCoin as any).displayName}</span>
+              <span className={`text-[10px] font-bold ${ (bestCoin as any).ofiDirection === "buy" ? "gain" : (bestCoin as any).ofiDirection === "sell" ? "loss" : "text-muted-foreground"}`}>
+                {(bestCoin as any).ofiDirection?.toUpperCase()}
+              </span>
+            </div>
+          )}
           <Button
             variant="outline" size="sm"
             onClick={() => simulateMutation.mutate()}
@@ -427,7 +442,7 @@ export default function Dashboard() {
             className="border-border text-xs"
           >
             <RefreshCw size={13} className={simulateMutation.isPending ? "animate-spin" : ""} />
-            {simulateMutation.isPending ? "Running..." : "Run Sim"}
+            {simulateMutation.isPending ? "Running..." : `Sim ${(bestCoin as any)?.displayName ?? config?.symbol ?? "BTC"}`}
           </Button>
           {isRunning ? (
             <Button size="sm" variant="destructive" onClick={() => stopMutation.mutate()} disabled={stopMutation.isPending} data-testid="button-stop" className="text-xs">
