@@ -66,7 +66,7 @@ export default function Trades() {
       {/* Demo mode banner */}
       <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20 text-xs">
         <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
-        <span className="text-muted-foreground">Demo Mode — <span className="text-foreground font-medium">real BTC market prices</span>, simulated money. Nothing here cost a penny.</span>
+        <span className="text-muted-foreground">Demo Mode — <span className="text-foreground font-medium">real market prices</span>, simulated money. Nothing here cost a penny.</span>
       </div>
 
       <div className="flex items-center justify-between flex-wrap gap-3">

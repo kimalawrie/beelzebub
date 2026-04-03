@@ -1,9 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
-import { Play, Square, RefreshCw, TrendingUp, TrendingDown, DollarSign, Target, Zap, AlertTriangle, Wifi, WifiOff, Activity } from "lucide-react";
-import { Button } from "@/components/ui/button";
+
+import { TrendingUp, TrendingDown, DollarSign, Target, Zap, AlertTriangle, Wifi, WifiOff, Activity } from "lucide-react";
+
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -298,9 +298,11 @@ export default function Dashboard() {
   const { data: stats, isLoading: statsLoading } = useQuery<Stats>({ queryKey: ["/api/stats"], refetchInterval: 5000 });
   const { data: portfolio } = useQuery<LatestPortfolio>({ queryKey: ["/api/portfolio/latest"], refetchInterval: 5000 });
   const { data: snapshots } = useQuery<PortfolioSnapshot[]>({ queryKey: ["/api/portfolio/snapshots"], refetchInterval: 10000 });
-  const { data: candles } = useQuery<PriceCandle[]>({ queryKey: ["/api/candles/BTC"], refetchInterval: 30000 });
+  const sym = config?.symbol ?? "BTC";
+  const { data: candles } = useQuery<PriceCandle[]>({ queryKey: ["/api/candles", sym], queryFn: () => apiRequest("GET", `/api/candles/${sym}`), refetchInterval: 30000 });
   const { data: livePrice } = useQuery<LivePrice>({
-    queryKey: ["/api/price/BTC"],
+    queryKey: ["/api/price", sym],
+    queryFn: () => apiRequest("GET", `/api/price/${sym}`),
     refetchInterval: 15000,
     enabled: !!(config?.symbol),
   });
@@ -351,25 +353,6 @@ export default function Dashboard() {
     refetchInterval: 3000,
   });
 
-  const simulateMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/simulate", {}),
-    onSuccess: (data: any) => {
-      toast({ title: `Simulation complete — ${data?.symbol ?? config?.symbol ?? "BTC"}`, description: "Historical data processed and trades simulated." });
-      qc.invalidateQueries();
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
-  const startMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/bot/start"),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/config"] }); },
-  });
-
-  const stopMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/bot/stop"),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/config"] }); },
-  });
-
   const isRunning = config?.isRunning ?? false;
 
   // Chart data
@@ -405,53 +388,45 @@ export default function Dashboard() {
         <div>
           <h1 className="text-lg font-bold text-foreground">Dashboard</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {config?.demoMode ? "Demo Mode — real BTC prices, simulated money" : "Live Trading"}
+            {isRunning
+              ? (config?.demoMode ? `Demo running — real ${sym} prices, simulated money` : `⚡ Live trading ${sym}/USDT`)
+              : "Not running — go to Competition to start"}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {/* Live price */}
           {livePrice && (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent border border-border text-sm">
-              <span className="text-muted-foreground font-mono text-xs">{livePrice.symbol}/USDT</span>
+              <span className="text-muted-foreground font-mono text-xs">{sym}/USDT</span>
               <span className="font-bold font-mono text-foreground tabular">{fmtPrice(livePrice.price)}</span>
               <span className={`font-mono text-xs ${livePrice.change24h >= 0 ? "gain" : "loss"}`}>
                 {fmtPct(livePrice.change24h)}
               </span>
             </div>
           )}
-          {/* WS status */}
-          <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium border ${wsConnected ? "border-green-500/30 bg-green-500/10 text-green-400" : "border-border text-muted-foreground"}`}>
-            {wsConnected ? <Wifi size={11} /> : <WifiOff size={11} />}
-            <span>{wsConnected ? "Live" : "Polling"}</span>
+          {/* Bot status */}
+          <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border ${
+            isRunning
+              ? "border-green-500/30 bg-green-500/10 text-green-400"
+              : "border-border text-muted-foreground"
+          }`}>
+            <div className={`w-2 h-2 rounded-full ${isRunning ? "bg-green-400 animate-pulse" : "bg-muted-foreground"}`} />
+            {isRunning ? (config?.demoMode ? "Demo" : "⚡ Live") : "Stopped"}
           </div>
-          {/* Best coin indicator */}
+          {/* WS status */}
+          <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium border ${wsConnected ? "border-primary/30 bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>
+            {wsConnected ? <Wifi size={11} /> : <WifiOff size={11} />}
+            <span>{wsConnected ? "WS Live" : "Polling"}</span>
+          </div>
+          {/* Best coin */}
           {bestCoin && (bestCoin as any).displayName && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent border border-border text-xs">
-              <span className="text-muted-foreground">Best signal:</span>
+              <span className="text-muted-foreground">Best:</span>
               <span className="font-mono font-bold text-primary">{(bestCoin as any).displayName}</span>
-              <span className={`text-[10px] font-bold ${ (bestCoin as any).ofiDirection === "buy" ? "gain" : (bestCoin as any).ofiDirection === "sell" ? "loss" : "text-muted-foreground"}`}>
+              <span className={`text-[10px] font-bold ${(bestCoin as any).ofiDirection === "buy" ? "gain" : (bestCoin as any).ofiDirection === "sell" ? "loss" : "text-muted-foreground"}`}>
                 {(bestCoin as any).ofiDirection?.toUpperCase()}
               </span>
             </div>
-          )}
-          <Button
-            variant="outline" size="sm"
-            onClick={() => simulateMutation.mutate()}
-            disabled={simulateMutation.isPending}
-            data-testid="button-simulate"
-            className="border-border text-xs"
-          >
-            <RefreshCw size={13} className={simulateMutation.isPending ? "animate-spin" : ""} />
-            {simulateMutation.isPending ? "Running..." : `Sim ${(bestCoin as any)?.displayName ?? config?.symbol ?? "BTC"}`}
-          </Button>
-          {isRunning ? (
-            <Button size="sm" variant="destructive" onClick={() => stopMutation.mutate()} disabled={stopMutation.isPending} data-testid="button-stop" className="text-xs">
-              <Square size={13} /> Stop
-            </Button>
-          ) : (
-            <Button size="sm" onClick={() => startMutation.mutate()} disabled={startMutation.isPending} data-testid="button-start" className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs">
-              <Play size={13} /> Start Bot
-            </Button>
           )}
         </div>
       </div>
@@ -460,7 +435,7 @@ export default function Dashboard() {
       {!hasData && (
         <div className="flex items-center gap-3 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm">
           <AlertTriangle size={16} />
-          <span>No data yet — click <strong>Run Sim</strong> to pull 90 days of real {config?.symbol ?? "BTC"} prices and see exactly what Beelzebub would have traded.</span>
+          <span>No data yet — click <strong>Run Sim</strong> to pull 90 days of real {sym} prices and see exactly what Beelzebub would have traded.</span>
         </div>
       )}
 
@@ -624,7 +599,7 @@ export default function Dashboard() {
         <Card className="border-border bg-card">
           <CardHeader className="pb-2 pt-4 px-4">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold text-foreground">{config?.symbol ?? "BTC"}/USDT — Simulation Price History (EMA + Signals)</CardTitle>
+              <CardTitle className="text-sm font-semibold text-foreground">{sym}/USDT — Simulation Price History (EMA + Signals)</CardTitle>
               <div className="flex items-center gap-4 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 inline-block rounded" style={{background:"hsl(271 91% 65%)"}} />EMA 9</span>
                 <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 inline-block rounded" style={{background:"hsl(38 100% 60%)"}} />EMA 21</span>

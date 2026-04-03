@@ -17,9 +17,30 @@ import {
   Trophy, Zap, Clock, Target, TrendingUp, Server, Wifi,
   AlertTriangle, Shield, Activity, Flame, RotateCcw, Play,
 } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
 
 // ── Types ──────────────────────────────────────────────────────────────────
+
+interface LiveTradeEvent {
+  id?: number;
+  symbol: string;
+  side: "buy" | "sell";
+  entryPrice?: number;
+  exitPrice?: number;
+  currentPrice?: number;
+  pnl?: number;
+  pnlPct?: number;
+  unrealizedPnl?: number;
+  reason?: string;
+  time: string;
+  type: "opened" | "closed" | "update";
+}
+
+interface OpenPosition {
+  id: number; symbol: string; side: "buy" | "sell";
+  entryPrice: number; quantity: number; entryTime: string;
+  currentPrice: number | null; unrealizedPnl: number | null;
+}
 
 interface CompetitionStatus {
   sessionStarted: boolean;
@@ -209,27 +230,106 @@ function buildDemoStatus(): CompetitionStatus {
 
 export default function Competition() {
   const [now, setNow] = useState(Date.now());
+  const [tradeLog, setTradeLog] = useState<LiveTradeEvent[]>([]);
+  const [openPos, setOpenPos] = useState<OpenPosition | null>(null);
   const qc = useQueryClient();
 
-  // Live clock — ticks every second to keep countdown accurate
+  // Live clock
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
+  // WebSocket — listen for live trade events
+  useEffect(() => {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${proto}//${window.location.host}/ws`;
+    let ws: WebSocket;
+    let reconnectTimer: any;
+
+    const connect = () => {
+      try {
+        ws = new WebSocket(wsUrl);
+        ws.onclose = () => { reconnectTimer = setTimeout(connect, 3000); };
+        ws.onerror = () => ws.close();
+        ws.onmessage = (e) => {
+          try {
+            const msg = JSON.parse(e.data);
+            const t = new Date().toISOString();
+            if (msg.type === "trade_opened") {
+              const d = msg.data;
+              setOpenPos({ id: d.id, symbol: d.symbol, side: d.side, entryPrice: d.entryPrice, quantity: d.quantity, entryTime: d.entryTime ?? t, currentPrice: d.currentPrice, unrealizedPnl: 0 });
+              setTradeLog(prev => [{ ...d, type: "opened", time: t }, ...prev].slice(0, 50));
+              qc.invalidateQueries({ queryKey: ["/api/trades"] });
+            }
+            if (msg.type === "trade_closed") {
+              setOpenPos(null);
+              setTradeLog(prev => [{ ...msg.data, type: "closed", time: t }, ...prev].slice(0, 50));
+              qc.invalidateQueries({ queryKey: ["/api/trades"] });
+              qc.invalidateQueries({ queryKey: ["/api/stats"] });
+              qc.invalidateQueries({ queryKey: ["/api/portfolio/latest"] });
+            }
+            if (msg.type === "position_update") {
+              setOpenPos(prev => prev ? { ...prev, currentPrice: msg.data.currentPrice, unrealizedPnl: msg.data.unrealizedPnl } : prev);
+            }
+          } catch {}
+        };
+      } catch {}
+    };
+    connect();
+    return () => { clearTimeout(reconnectTimer); ws?.close(); };
+  }, []);
+
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: ["/api/competition/status"] });
+    qc.invalidateQueries({ queryKey: ["/api/config"] });
+  };
+
   const startMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/bot/start"),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/competition/status"] }),
+    mutationFn: () => apiRequest("POST", "/api/bot/start", { real: false }),
+    onSuccess: invalidateAll,
+  });
+
+  const realStartMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/bot/start", { real: true }),
+    onSuccess: invalidateAll,
+  });
+
+  const stopMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/bot/stop"),
+    onSuccess: invalidateAll,
   });
 
   const resetMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/competition/reset"),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/competition/status"] }),
+    onSuccess: () => {
+      invalidateAll();
+      qc.invalidateQueries({ queryKey: ["/api/stats"] });
+      qc.invalidateQueries({ queryKey: ["/api/portfolio/latest"] });
+    },
   });
 
   const { data: competitionData } = useQuery<CompetitionStatus>({
     queryKey: ["/api/competition/status"],
-    refetchInterval: 5000,
+    refetchInterval: 2000,  // poll every 2s for live P&L
+  });
+
+  // Pull live portfolio separately for instant P&L updates
+  const { data: livePortfolio } = useQuery<{
+    totalValue: number; cashBalance: number; cryptoValue: number;
+    realizedPnl: number; unrealizedPnl: number; drawdown: number;
+  }>({
+    queryKey: ["/api/portfolio/latest"],
+    refetchInterval: 1000,  // 1s for live feel
+  });
+
+  const { data: liveStats } = useQuery<{
+    totalTrades: number; wins: number; losses: number; winRate: number;
+    totalPnl: number; totalReturn: number; sharpe: number;
+    initialCapital: number;
+  }>({
+    queryKey: ["/api/stats"],
+    refetchInterval: 2000,
   });
   const { data: ofi } = useQuery<OFISummary>({
     queryKey: ["/api/orderflow/summary"],
@@ -249,20 +349,26 @@ export default function Competition() {
     refetchInterval: 2000,
   });
 
-  // Build competition state — always safe, API data mapped onto demo defaults
+  // Build competition state — use live portfolio/stats data wherever available
   const demo = buildDemoStatus();
+  const startingCapital = liveStats?.initialCapital ?? competitionData?.startingCapital ?? demo.startingCapital;
+  const portfolioValue = livePortfolio?.totalValue ?? competitionData?.portfolioValue ?? demo.portfolioValue;
+  const pnl = liveStats?.totalPnl ?? competitionData?.pnl ?? demo.pnl;
+  const pnlPct = liveStats?.totalReturn ?? competitionData?.pnlPct ?? demo.pnlPct;
+  const tradesExecuted = liveStats?.totalTrades ?? competitionData?.tradesExecuted ?? demo.tradesExecuted;
+
   const comp: CompetitionStatus = {
     sessionStarted: competitionData?.sessionStarted ?? demo.sessionStarted,
     startTime: competitionData?.startTime ?? demo.startTime,
-    currentTime: competitionData?.currentTime ?? demo.currentTime,
+    currentTime: now,
     elapsed: competitionData?.elapsed ?? demo.elapsed,
     remaining: competitionData?.remaining ?? demo.remaining,
-    portfolioValue: competitionData?.portfolioValue ?? demo.portfolioValue,
-    startingCapital: competitionData?.startingCapital ?? demo.startingCapital,
-    pnl: competitionData?.pnl ?? demo.pnl,
-    pnlPct: competitionData?.pnlPct ?? (competitionData as any)?.pnlPercent ?? demo.pnlPct,
-    winProbability: competitionData?.winProbability ?? demo.winProbability,
-    tradesExecuted: competitionData?.tradesExecuted ?? (competitionData as any)?.totalTrades ?? demo.tradesExecuted,
+    portfolioValue,
+    startingCapital,
+    pnl,
+    pnlPct,
+    winProbability: competitionData?.winProbability ?? Math.min(95, Math.max(5, 50 + pnlPct * 5)) ?? demo.winProbability,
+    tradesExecuted,
     currentStreak: competitionData?.currentStreak ?? demo.currentStreak,
     edgeScore: competitionData?.edgeScore ?? demo.edgeScore,
   };
@@ -286,6 +392,9 @@ export default function Competition() {
   const safe = (v: number | undefined | null, decimals = 2) =>
     v != null ? v.toFixed(decimals) : "—";
 
+  const isRunning = comp.sessionStarted;
+  const isReal = competitionData ? !(competitionData as any).demoMode : false;
+
   return (
     <div className="p-5 space-y-4 min-h-full">
       {/* Header */}
@@ -294,36 +403,65 @@ export default function Competition() {
           <div className="flex items-center gap-2">
             <Trophy size={18} className="text-yellow-400" />
             <h1 className="text-lg font-bold text-foreground">Beelzebub vs The World</h1>
-            {isDemo && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full border border-yellow-400/30 bg-yellow-400/10 text-yellow-400 font-bold uppercase">Demo</span>
+            {isRunning && (
+              <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase ${
+                isReal
+                  ? "border-red-500/40 bg-red-500/10 text-red-400 animate-pulse"
+                  : "border-primary/30 bg-primary/10 text-primary"
+              }`}>
+                {isReal ? "⚡ LIVE" : "DEMO"}
+              </span>
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
             24-hour wager · £100 stake · vs RTX 5090
           </p>
         </div>
+
         <div className="flex items-center gap-2">
-          {!comp.sessionStarted && (
-            <button
-              onClick={() => startMutation.mutate()}
-              disabled={startMutation.isPending}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors"
-              data-testid="button-start-competition"
-            >
-              <Play size={13} />
-              {startMutation.isPending ? "Starting..." : "Start 24hr Clock"}
-            </button>
-          )}
-          {comp.sessionStarted && (
-            <button
-              onClick={() => resetMutation.mutate()}
-              disabled={resetMutation.isPending}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-              data-testid="button-reset-competition"
-            >
-              <RotateCcw size={12} />
-              Reset Clock
-            </button>
+          {isRunning ? (
+            // Running — show stop + reset
+            <>
+              <button
+                onClick={() => stopMutation.mutate()}
+                disabled={stopMutation?.isPending}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-xs font-bold hover:bg-red-500/20 transition-colors"
+                data-testid="button-stop"
+              >
+                <span className="w-2 h-2 rounded-sm bg-red-400" />
+                Stop
+              </button>
+              <button
+                onClick={() => resetMutation.mutate()}
+                disabled={resetMutation.isPending}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              >
+                <RotateCcw size={12} /> Reset
+              </button>
+            </>
+          ) : (
+            // Not running — show Start Demo + Start Real
+            <>
+              <button
+                onClick={() => startMutation.mutate()}
+                disabled={startMutation.isPending}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors"
+                data-testid="button-start-demo"
+              >
+                <Play size={13} />
+                {startMutation.isPending ? "Starting..." : "Start Demo"}
+              </button>
+              <button
+                onClick={() => realStartMutation.mutate()}
+                disabled={realStartMutation.isPending}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold hover:bg-red-500/20 transition-colors"
+                data-testid="button-start-real"
+                title="Real money mode — requires Binance API key"
+              >
+                <Zap size={13} />
+                {realStartMutation.isPending ? "Starting..." : "⚡ Start Real"}
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -608,6 +746,114 @@ export default function Competition() {
                 HIGH LATENCY — pause trading this window
               </div>
             )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Live Position + Trade Log ──────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Open position */}
+        <Card className="border-border bg-card">
+          <CardHeader className="pb-2 pt-4 px-4">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Activity size={14} className="text-primary" />
+              Active Position
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            {openPos ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-lg font-bold font-mono ${openPos.side === "buy" ? "gain" : "loss"}`}>
+                      {openPos.side.toUpperCase()}
+                    </span>
+                    <span className="text-lg font-bold text-foreground">{openPos.symbol}/USDT</span>
+                  </div>
+                  <div className="text-right">
+                    <div className={`text-xl font-bold font-mono tabular ${(openPos.unrealizedPnl ?? 0) >= 0 ? "gain" : "loss"}`}>
+                      {(openPos.unrealizedPnl ?? 0) >= 0 ? "+" : ""}${(openPos.unrealizedPnl ?? 0).toFixed(4)}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Unrealized P&L</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div>
+                    <div className="text-muted-foreground">Entry</div>
+                    <div className="font-mono font-semibold text-foreground">${openPos.entryPrice.toLocaleString("en-US", { maximumFractionDigits: 2 })}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Current</div>
+                    <div className="font-mono font-semibold text-primary">${(openPos.currentPrice ?? openPos.entryPrice).toLocaleString("en-US", { maximumFractionDigits: 2 })}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Qty</div>
+                    <div className="font-mono text-foreground">{openPos.quantity.toFixed(5)}</div>
+                  </div>
+                </div>
+                <div className="text-[10px] text-muted-foreground">Opened {format(new Date(openPos.entryTime), "HH:mm:ss")} · TP 6% / SL 3%</div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-6 text-center space-y-2">
+                <div className="w-2 h-2 rounded-full bg-muted-foreground" />
+                <p className="text-xs text-muted-foreground">
+                  {comp.sessionStarted ? "Scanning for signal... next check in ~15s" : "Start the bot to begin trading"}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Live trade log */}
+        <Card className="border-border bg-card">
+          <CardHeader className="pb-2 pt-4 px-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Zap size={14} className="text-primary" />
+                Live Trade Log
+              </CardTitle>
+              <span className="text-[10px] text-muted-foreground">{tradeLog.length} events</span>
+            </div>
+          </CardHeader>
+          <CardContent className="px-0 pb-2">
+            <div className="overflow-y-auto max-h-[180px]">
+              {tradeLog.length === 0 ? (
+                <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+                  {comp.sessionStarted ? "Waiting for first trade..." : "Start the bot to see live trades here"}
+                </div>
+              ) : (
+                <div className="space-y-0">
+                  {tradeLog.map((evt, i) => (
+                    <div key={i} className={`flex items-center justify-between px-4 py-2 border-b border-border/50 text-xs ${
+                      evt.type === "opened" ? "bg-primary/5" : ""
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                          evt.type === "opened" ? "bg-primary" :
+                          (evt.pnl ?? 0) >= 0 ? "bg-green-400" : "bg-red-500"
+                        }`} />
+                        <span className={`font-bold uppercase ${evt.side === "buy" ? "gain" : "loss"}`}>{evt.side}</span>
+                        <span className="font-mono text-foreground">{evt.symbol}</span>
+                        <span className="text-muted-foreground">
+                          {evt.type === "opened" ? `@ $${(evt.entryPrice ?? 0).toLocaleString("en-US", {maximumFractionDigits: 2})}` :
+                           evt.type === "closed" ? `→ $${(evt.exitPrice ?? 0).toLocaleString("en-US", {maximumFractionDigits: 2})}` : ""}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {evt.type === "closed" && evt.pnl != null && (
+                          <span className={`font-mono font-bold ${evt.pnl >= 0 ? "gain" : "loss"}`}>
+                            {evt.pnl >= 0 ? "+" : ""}${evt.pnl.toFixed(4)}
+                          </span>
+                        )}
+                        {evt.type === "opened" && <span className="text-primary font-bold uppercase text-[10px]">OPEN</span>}
+                        {evt.reason && <span className="text-[10px] text-muted-foreground uppercase">{evt.reason}</span>}
+                        <span className="text-[10px] text-muted-foreground font-mono">{format(new Date(evt.time), "HH:mm:ss")}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>

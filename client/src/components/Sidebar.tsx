@@ -4,11 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import type { BotConfig } from "@shared/schema";
 
 const navItems = [
-  { href: "/", icon: Activity, label: "Dashboard" },
+  { href: "/competition", icon: Trophy, label: "Competition", highlight: true },
+  { href: "/dashboard", icon: Activity, label: "Dashboard" },
   { href: "/trades", icon: TrendingUp, label: "Trades" },
   { href: "/strategy", icon: Scan, label: "Scanner" },
   { href: "/portfolio", icon: Wallet, label: "Portfolio" },
-  { href: "/competition", icon: Trophy, label: "Competition", highlight: true },
 ];
 
 export default function Sidebar() {

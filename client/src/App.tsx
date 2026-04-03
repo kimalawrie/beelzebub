@@ -19,7 +19,8 @@ export default function App() {
           <Sidebar />
           <main className="flex-1 overflow-y-auto overscroll-contain">
             <Switch>
-              <Route path="/" component={Dashboard} />
+              <Route path="/" component={Competition} />
+              <Route path="/dashboard" component={Dashboard} />
               <Route path="/trades" component={Trades} />
               <Route path="/strategy" component={Strategy} />
               <Route path="/portfolio" component={Portfolio} />

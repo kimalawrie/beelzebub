@@ -3,6 +3,7 @@ import type { Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage, db } from "./storage";
 import { runDemoSimulation, computeStats, fetchHistoricalData } from "./engine";
+import { startLiveTrader, stopLiveTrader, traderEvents, isLiveTraderRunning, getOpenPositionId } from "./livetrader";
 import { getEngine, initAllEngines, rankCoins, getBestCoin, TOP_COINS } from "./orderflow";
 import { trades, portfolioSnapshots, priceCandles } from "@shared/schema";
 
@@ -35,6 +36,17 @@ export function registerRoutes(httpServer: Server, app: Express) {
     clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(msg); });
   });
 
+  // Broadcast live trader events
+  const broadcast = (type: string, data: any) => {
+    const msg = JSON.stringify({ type, data });
+    clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(msg); });
+  };
+  traderEvents.on("trade_opened",   d => broadcast("trade_opened", d));
+  traderEvents.on("trade_closed",   d => broadcast("trade_closed", d));
+  traderEvents.on("position_update",d => broadcast("position_update", d));
+  traderEvents.on("started",        () => broadcast("bot_started", {}));
+  traderEvents.on("stopped",        () => broadcast("bot_stopped", {}));
+
   // ── Bot Config ────────────────────────────────────────────────────────────
   app.get("/api/config", (_req, res) => {
     try { res.json(storage.getBotConfig()); } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -62,11 +74,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
     try {
       const config = storage.getBotConfig()!;
       if (config.isRunning) return res.json({ status: "already_running" });
-      // Stamp competition start time only on first start (not if already set)
+      const { real = false } = req.body ?? {};
       const startTime = config.competitionStartTime ?? new Date().toISOString();
-      storage.upsertBotConfig({ isRunning: true, competitionStartTime: startTime });
-      res.json({ status: "started", demoMode: config.demoMode, competitionStartTime: startTime });
-      if (config.demoMode) runDemoSimulation(config.symbol).catch(console.error);
+      storage.upsertBotConfig({ isRunning: true, demoMode: !real, competitionStartTime: startTime });
+      res.json({ status: "started", demoMode: !real, competitionStartTime: startTime, real });
+      startLiveTrader();
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -80,6 +92,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
   app.post("/api/bot/stop", (_req, res) => {
     try {
       storage.upsertBotConfig({ isRunning: false });
+      stopLiveTrader();
       res.json({ status: "stopped" });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -115,7 +128,16 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   app.get("/api/trades/open", (_req, res) => {
-    try { res.json(storage.getOpenTrade() ?? null); } catch (e: any) { res.status(500).json({ error: e.message }); }
+    try {
+      const trade = storage.getOpenTrade() ?? null;
+      if (!trade) return res.json(null);
+      // Enrich with live P&L
+      const price = trade.symbol ? getEngine(trade.symbol + "USDT").getLatestOFI()?.midPrice ?? null : null;
+      const unrealizedPnl = price
+        ? (trade.side === "buy" ? price - trade.entryPrice : trade.entryPrice - price) * trade.quantity
+        : null;
+      res.json({ ...trade, currentPrice: price, unrealizedPnl });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
   // ── Portfolio ─────────────────────────────────────────────────────────────

@@ -84,22 +84,23 @@ export default function Portfolio() {
     <div className="p-5 space-y-4">
       <div>
         <h1 className="text-lg font-bold text-foreground">Beelzebub’s Portfolio</h1>
-        <p className="text-xs text-muted-foreground">Demo mode — real BTC prices, simulated capital. Full performance breakdown.</p>
+        <p className="text-xs text-muted-foreground">Demo mode — real {config?.symbol ?? "crypto"} prices, simulated capital. Full performance breakdown.</p>
       </div>
 
       {/* Top row: Total value + allocation + stats */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Portfolio value card */}
-        <Card className="border-border bg-card panel-hover">
+        <Card className="border-border bg-card panel-hover border-primary/20">
           <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-sm font-semibold">Portfolio Value</CardTitle>
+            <CardTitle className="text-sm font-semibold">Total Portfolio Value</CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4 space-y-3">
             <div>
-              <p className="text-2xl font-bold tabular font-mono text-foreground">{fmtUsd(totalValue)}</p>
-              <p className={`text-sm font-mono font-semibold mt-1 ${totalPnl >= 0 ? "gain" : "loss"}`}>
+              <p className="text-3xl font-bold tabular font-mono text-foreground">{fmtUsd(totalValue)}</p>
+              <p className={`text-base font-mono font-semibold mt-1 ${totalPnl >= 0 ? "gain" : "loss"}`}>
                 {totalPnl >= 0 ? "+" : ""}{fmtUsd(totalPnl)} ({fmtPct(stats?.totalReturn ?? 0)})
               </p>
+              <p className="text-xs text-muted-foreground mt-1">Trading {config?.symbol ?? "—"}/USDT</p>
             </div>
             <div className="space-y-0">
               <StatRow label="Initial Capital" value={fmtUsd(initialCapital)} />
