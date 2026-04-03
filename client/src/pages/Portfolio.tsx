@@ -83,8 +83,8 @@ export default function Portfolio() {
   return (
     <div className="p-5 space-y-4">
       <div>
-        <h1 className="text-lg font-bold text-foreground">Portfolio</h1>
-        <p className="text-xs text-muted-foreground">Full performance breakdown and allocation</p>
+        <h1 className="text-lg font-bold text-foreground">Beelzebub’s Portfolio</h1>
+        <p className="text-xs text-muted-foreground">Demo mode — real BTC prices, simulated capital. Full performance breakdown.</p>
       </div>
 
       {/* Top row: Total value + allocation + stats */}

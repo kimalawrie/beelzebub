@@ -263,7 +263,7 @@ export default function Competition() {
         <div>
           <div className="flex items-center gap-2">
             <Trophy size={18} className="text-yellow-400" />
-            <h1 className="text-lg font-bold text-foreground">Competition Mode</h1>
+            <h1 className="text-lg font-bold text-foreground">Beelzebub vs The World</h1>
             {isDemo && (
               <span className="text-[10px] px-2 py-0.5 rounded-full border border-yellow-400/30 bg-yellow-400/10 text-yellow-400 font-bold uppercase">Demo</span>
             )}
@@ -273,7 +273,7 @@ export default function Competition() {
           </p>
         </div>
         <div className="text-right">
-          <div className="text-xs text-muted-foreground">Your edge: order flow intelligence + latency awareness</div>
+          <div className="text-xs text-muted-foreground">Beelzebub’s edge: order flow intelligence + latency awareness</div>
           <div className="text-xs text-primary font-medium mt-0.5">Speed without strategy is just expensive noise.</div>
         </div>
       </div>

@@ -399,7 +399,7 @@ export default function Dashboard() {
         <div>
           <h1 className="text-lg font-bold text-foreground">Dashboard</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {config?.demoMode ? "Demo Mode — Simulated trades on real market data" : "Live Trading"}
+            {config?.demoMode ? "Demo Mode — real BTC prices, simulated money" : "Live Trading"}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -444,7 +444,7 @@ export default function Dashboard() {
       {!hasData && (
         <div className="flex items-center gap-3 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm">
           <AlertTriangle size={16} />
-          <span>No simulation data yet. Click <strong>Run Sim</strong> to fetch 90 days of {config?.symbol ?? "BTC"} data and simulate the strategy.</span>
+          <span>No data yet — click <strong>Run Sim</strong> to pull 90 days of real {config?.symbol ?? "BTC"} prices and see exactly what Beelzebub would have traded.</span>
         </div>
       )}
 

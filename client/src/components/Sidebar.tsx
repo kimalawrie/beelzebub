@@ -25,14 +25,14 @@ export default function Sidebar() {
       {/* Logo */}
       <div className="px-4 py-4 border-b border-border">
         <div className="flex items-center gap-2.5">
-          <svg aria-label="TradeBot" viewBox="0 0 32 32" className="w-7 h-7 flex-shrink-0" fill="none">
+          <svg aria-label="Beelzebub" viewBox="0 0 32 32" className="w-7 h-7 flex-shrink-0" fill="none">
             <rect width="32" height="32" rx="6" fill="hsl(var(--primary) / 0.12)" />
             <polyline points="4,22 10,14 16,18 22,8 28,12" fill="none" stroke="hsl(var(--primary))" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
             <circle cx="28" cy="12" r="2.5" fill="hsl(var(--primary))" />
           </svg>
           <div>
-            <div className="text-sm font-bold text-foreground leading-tight tracking-wide">TradeBot</div>
-            <div className="text-xs text-muted-foreground font-mono">Alpha v2.0</div>
+            <div className="text-sm font-bold text-foreground leading-tight tracking-wide">Beelzebub</div>
+            <div className="text-xs text-muted-foreground font-mono">v2.0 · Demo</div>
           </div>
         </div>
       </div>

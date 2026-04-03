@@ -17,7 +17,7 @@ export const db = drizzle(sqlite);
 sqlite.exec(`
   CREATE TABLE IF NOT EXISTS bot_config (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL DEFAULT 'TradeBot Alpha',
+    name TEXT NOT NULL DEFAULT 'Beelzebub',
     symbol TEXT NOT NULL DEFAULT 'BTC',
     pair TEXT NOT NULL DEFAULT 'BTC/USDT',
     strategy TEXT NOT NULL DEFAULT 'EMA_MACD_RSI',
@@ -118,7 +118,7 @@ export const storage: IStorage = {
     if (configs.length === 0) {
       // Seed default config
       db.insert(botConfig).values({
-        name: "TradeBot Alpha",
+        name: "Beelzebub",
         symbol: "BTC",
         pair: "BTC/USDT",
         strategy: "EMA_MACD_RSI",

@@ -39,6 +39,7 @@ export default function Trades() {
   });
 
   const closed = allTrades.filter(t => t.status === "closed");
+  const totalPnl = closed.reduce((s, t) => s + (t.pnl ?? 0), 0);
 
   // P&L per trade bar chart
   const pnlData = closed.slice().reverse().slice(0, 50).map((t, i) => ({
@@ -62,10 +63,21 @@ export default function Trades() {
 
   return (
     <div className="p-5 space-y-4">
+      {/* Demo mode banner */}
+      <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20 text-xs">
+        <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
+        <span className="text-muted-foreground">Demo Mode — <span className="text-foreground font-medium">real BTC market prices</span>, simulated money. Nothing here cost a penny.</span>
+      </div>
+
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-lg font-bold text-foreground">Trades</h1>
-          <p className="text-xs text-muted-foreground">{allTrades.length} total trades · {wins}W / {losses}L · {winRate.toFixed(1)}% win rate</p>
+          <h1 className="text-lg font-bold text-foreground">Beelzebub’s Trades</h1>
+          <div className="flex items-center gap-3 mt-0.5">
+            <span className="text-xs text-muted-foreground">{allTrades.length} trades · {wins}W / {losses}L · {winRate.toFixed(1)}% win rate</span>
+            <span className={`text-sm font-bold font-mono tabular ${totalPnl >= 0 ? "gain" : "loss"}`}>
+              {totalPnl >= 0 ? "+" : ""}{fmtUsd(totalPnl)} total P&L
+            </span>
+          </div>
         </div>
         {/* Filter tabs */}
         <div className="flex gap-1 p-1 bg-muted rounded-lg text-xs">
