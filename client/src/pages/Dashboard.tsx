@@ -572,7 +572,7 @@ export default function Dashboard() {
         <KpiCard
           title="Portfolio Value" loading={statsLoading}
           value={`$${(portfolio?.totalValue ?? stats?.initialCapital ?? 10000).toFixed(2)}`}
-          sub={`Started $${stats?.initialCapital?.toFixed(0) ?? "10,000"}`}
+          sub={`Started $${stats?.initialCapital?.toFixed(2) ?? "12.50"}`}
           positive={null} icon={DollarSign}
         />
         <KpiCard
