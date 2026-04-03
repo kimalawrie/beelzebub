@@ -35,9 +35,12 @@ sqlite.exec(`
     macd_fast INTEGER NOT NULL DEFAULT 12,
     macd_slow INTEGER NOT NULL DEFAULT 26,
     macd_signal INTEGER NOT NULL DEFAULT 9,
+    competition_start_time TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+
 
   CREATE TABLE IF NOT EXISTS trades (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,6 +91,9 @@ sqlite.exec(`
     signal TEXT
   );
 `);
+
+// Migrate existing DBs — safe no-op if column already exists
+try { sqlite.exec(`ALTER TABLE bot_config ADD COLUMN competition_start_time TEXT`); } catch {}
 
 export interface IStorage {
   // Bot config

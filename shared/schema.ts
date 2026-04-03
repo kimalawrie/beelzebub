@@ -23,6 +23,7 @@ export const botConfig = sqliteTable("bot_config", {
   macdFast: integer("macd_fast").notNull().default(12),
   macdSlow: integer("macd_slow").notNull().default(26),
   macdSignal: integer("macd_signal").notNull().default(9),
+  competitionStartTime: text("competition_start_time"),  // ISO string, set when bot starts in competition mode
   createdAt: text("created_at").notNull().default(new Date().toISOString()),
   updatedAt: text("updated_at").notNull().default(new Date().toISOString()),
 });

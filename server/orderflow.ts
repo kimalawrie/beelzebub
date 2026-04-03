@@ -506,3 +506,90 @@ export function getEngine(symbol: string = "BTCUSDT"): OrderFlowEngine {
   }
   return engines.get(symbol)!;
 }
+
+// ── Multi-Coin Scanner ─────────────────────────────────────────────────────
+
+export const TOP_COINS = [
+  "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
+  "DOGEUSDT", "ADAUSDT", "AVAXUSDT", "DOTUSDT", "MATICUSDT",
+  "LINKUSDT", "LTCUSDT", "UNIUSDT", "ATOMUSDT", "NEARUSDT",
+  "APTUSDT", "OPUSDT", "ARBUSDT", "FILUSDT", "INJUSDT",
+];
+
+export interface CoinRanking {
+  symbol: string;
+  displayName: string;
+  ofiScore: number;         // abs smoothed OFI
+  ofiDirection: "buy" | "sell" | "neutral";
+  spreadBps: number;
+  aggressionScore: number;
+  executionQuality: string;
+  momentumIgnition: boolean;
+  momentumDirection: "up" | "down" | null;
+  midPrice: number;
+  depthRatio: number;
+  latencyMs: number | null;
+  signalStrength: number;   // composite 0-100 score
+  rank: number;
+}
+
+export function initAllEngines(): void {
+  for (const sym of TOP_COINS) {
+    getEngine(sym);
+  }
+}
+
+export function rankCoins(): CoinRanking[] {
+  const rankings: CoinRanking[] = [];
+
+  for (const sym of TOP_COINS) {
+    const engine = engines.get(sym);
+    if (!engine) continue;
+    const ofi = engine.getLatestOFI();
+    const latency = engine.getCurrentLatency();
+    if (!ofi) continue;
+
+    // Composite signal strength:
+    // - High |OFI| = strong directional pressure (40%)
+    // - Tight spread = cheap execution (20%)
+    // - Aggression extremity = conviction (20%)
+    // - Momentum ignition = big alpha (20% bonus)
+    const ofiComponent = Math.min(1, Math.abs(ofi.ofiSmooth) / 0.6) * 40;
+    const spreadComponent = Math.max(0, (1 - ofi.spreadBps / 10)) * 20;
+    const aggressionComponent = Math.abs(ofi.aggressionScore - 50) / 50 * 20;
+    const momentumBonus = ofi.momentumIgnition ? 20 : 0;
+
+    const signalStrength = Math.min(100, ofiComponent + spreadComponent + aggressionComponent + momentumBonus);
+
+    const displayName = sym.replace("USDT", "");
+    const ofiDirection: "buy" | "sell" | "neutral" = ofi.ofiSmooth > 0.15 ? "buy" : ofi.ofiSmooth < -0.15 ? "sell" : "neutral";
+
+    rankings.push({
+      symbol: sym,
+      displayName,
+      ofiScore: ofi.ofiSmooth,
+      ofiDirection,
+      spreadBps: ofi.spreadBps,
+      aggressionScore: ofi.aggressionScore,
+      executionQuality: ofi.executionQuality,
+      momentumIgnition: ofi.momentumIgnition,
+      momentumDirection: ofi.momentumDirection,
+      midPrice: ofi.midPrice,
+      depthRatio: ofi.depthRatio,
+      latencyMs: latency?.roundTripMs ?? null,
+      signalStrength,
+      rank: 0,
+    });
+  }
+
+  // Sort by signal strength descending
+  rankings.sort((a, b) => b.signalStrength - a.signalStrength);
+  rankings.forEach((r, i) => r.rank = i + 1);
+
+  return rankings;
+}
+
+export function getBestCoin(): CoinRanking | null {
+  const ranked = rankCoins();
+  return ranked.length > 0 ? ranked[0] : null;
+}

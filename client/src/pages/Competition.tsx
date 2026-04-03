@@ -3,7 +3,7 @@
  * "A 5090 making bad decisions faster still loses."
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +15,7 @@ import {
 } from "recharts";
 import {
   Trophy, Zap, Clock, Target, TrendingUp, Server, Wifi,
-  AlertTriangle, Shield, Activity, Flame,
+  AlertTriangle, Shield, Activity, Flame, RotateCcw, Play,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -209,12 +209,23 @@ function buildDemoStatus(): CompetitionStatus {
 
 export default function Competition() {
   const [now, setNow] = useState(Date.now());
+  const qc = useQueryClient();
 
-  // Live clock
+  // Live clock — ticks every second to keep countdown accurate
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  const startMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/bot/start"),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/competition/status"] }),
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/competition/reset"),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/competition/status"] }),
+  });
 
   const { data: competitionData } = useQuery<CompetitionStatus>({
     queryKey: ["/api/competition/status"],
@@ -291,9 +302,29 @@ export default function Competition() {
             24-hour wager · £100 stake · vs RTX 5090
           </p>
         </div>
-        <div className="text-right">
-          <div className="text-xs text-muted-foreground">Beelzebub’s edge: order flow intelligence + latency awareness</div>
-          <div className="text-xs text-primary font-medium mt-0.5">Speed without strategy is just expensive noise.</div>
+        <div className="flex items-center gap-2">
+          {!comp.sessionStarted && (
+            <button
+              onClick={() => startMutation.mutate()}
+              disabled={startMutation.isPending}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors"
+              data-testid="button-start-competition"
+            >
+              <Play size={13} />
+              {startMutation.isPending ? "Starting..." : "Start 24hr Clock"}
+            </button>
+          )}
+          {comp.sessionStarted && (
+            <button
+              onClick={() => resetMutation.mutate()}
+              disabled={resetMutation.isPending}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              data-testid="button-reset-competition"
+            >
+              <RotateCcw size={12} />
+              Reset Clock
+            </button>
+          )}
         </div>
       </div>
 
@@ -368,7 +399,7 @@ export default function Competition() {
               Win Probability
             </CardTitle>
           </CardHeader>
-          <CardContent className="px-4 pb-4">
+          <CardContent className="px-4 pb-4 space-y-4">
             <div className="flex items-center justify-between gap-4">
               <WinProbGauge probability={comp.winProbability} />
               <div className="flex-1 space-y-3">
@@ -393,6 +424,43 @@ export default function Competition() {
                   color="hsl(271 91% 65%)"
                 />
               </div>
+            </div>
+
+            {/* The real metric */}
+            <div className="pt-3 border-t border-border space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground flex items-center gap-1.5">
+                  <span>🥨</span> Chance of Lederhosen
+                </span>
+                <span className={`font-mono font-bold ${
+                  (100 - comp.winProbability) > 60 ? "loss" :
+                  (100 - comp.winProbability) > 40 ? "text-yellow-400" : "gain"
+                }`}>
+                  {(100 - comp.winProbability).toFixed(0)}%
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-accent overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${100 - comp.winProbability}%`,
+                    background: (100 - comp.winProbability) > 60
+                      ? "hsl(0 72% 55%)"
+                      : (100 - comp.winProbability) > 40
+                      ? "hsl(38 100% 60%)"
+                      : "hsl(160 100% 45%)",
+                  }}
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground italic">
+                {(100 - comp.winProbability) < 30
+                  ? "Looking good. The 5090 might as well start measuring its inseam."
+                  : (100 - comp.winProbability) < 50
+                  ? "Slight lederhosen risk. Stay focused."
+                  : (100 - comp.winProbability) < 70
+                  ? "The leather trousers are looking increasingly likely."
+                  : "High lederhosen probability. Beelzebub needs to work harder."}
+              </p>
             </div>
           </CardContent>
         </Card>

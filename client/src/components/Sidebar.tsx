@@ -1,12 +1,12 @@
 import { Link, useLocation } from "wouter";
-import { BarChart2, Activity, TrendingUp, Wallet, Trophy } from "lucide-react";
+import { Scan, Activity, TrendingUp, Wallet, Trophy } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import type { BotConfig } from "@shared/schema";
 
 const navItems = [
   { href: "/", icon: Activity, label: "Dashboard" },
   { href: "/trades", icon: TrendingUp, label: "Trades" },
-  { href: "/strategy", icon: BarChart2, label: "Strategy" },
+  { href: "/strategy", icon: Scan, label: "Scanner" },
   { href: "/portfolio", icon: Wallet, label: "Portfolio" },
   { href: "/competition", icon: Trophy, label: "Competition", highlight: true },
 ];

@@ -3,10 +3,11 @@ import type { Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage, db } from "./storage";
 import { runDemoSimulation, computeStats, fetchHistoricalData } from "./engine";
-import { getEngine } from "./orderflow";
+import { getEngine, initAllEngines, rankCoins, getBestCoin, TOP_COINS } from "./orderflow";
 import { trades, portfolioSnapshots, priceCandles } from "@shared/schema";
 
-// Global OFI engine (BTC by default)
+// Boot all 20 coin scanners simultaneously
+initAllEngines();
 let ofiEngine = getEngine("BTCUSDT");
 
 export function registerRoutes(httpServer: Server, app: Express) {
@@ -61,9 +62,18 @@ export function registerRoutes(httpServer: Server, app: Express) {
     try {
       const config = storage.getBotConfig()!;
       if (config.isRunning) return res.json({ status: "already_running" });
-      storage.upsertBotConfig({ isRunning: true });
-      res.json({ status: "started", demoMode: config.demoMode });
+      // Stamp competition start time only on first start (not if already set)
+      const startTime = config.competitionStartTime ?? new Date().toISOString();
+      storage.upsertBotConfig({ isRunning: true, competitionStartTime: startTime });
+      res.json({ status: "started", demoMode: config.demoMode, competitionStartTime: startTime });
       if (config.demoMode) runDemoSimulation(config.symbol).catch(console.error);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/competition/reset", (_req, res) => {
+    try {
+      storage.upsertBotConfig({ competitionStartTime: undefined as any, isRunning: false });
+      res.json({ success: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -202,6 +212,24 @@ export function registerRoutes(httpServer: Server, app: Express) {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // ── Multi-Coin Scanner ────────────────────────────────────────────────
+  app.get("/api/scanner/rankings", (_req, res) => {
+    try {
+      res.json(rankCoins());
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/scanner/best", (_req, res) => {
+    try {
+      const best = getBestCoin();
+      res.json(best ?? { error: "No data yet" });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/scanner/coins", (_req, res) => {
+    res.json({ coins: TOP_COINS.map(s => s.replace("USDT", "")), count: TOP_COINS.length });
+  });
+
   // ── Infrastructure Recommendations ────────────────────────────────────────
   app.get("/api/infrastructure", (_req, res) => {
     res.json({
@@ -264,11 +292,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
         isRunning: config.isRunning,
         demoMode: config.demoMode,
         // Competition-specific fields
-        sessionStarted: config.isRunning,
-        startTime: null,
+        sessionStarted: !!(config.competitionStartTime),
+        startTime: config.competitionStartTime ? new Date(config.competitionStartTime).getTime() : null,
         currentTime: Date.now(),
-        elapsed: 0,
-        remaining: 24 * 3600 * 1000,
+        elapsed: config.competitionStartTime ? Date.now() - new Date(config.competitionStartTime).getTime() : 0,
+        remaining: config.competitionStartTime
+          ? Math.max(0, 24 * 3600 * 1000 - (Date.now() - new Date(config.competitionStartTime).getTime()))
+          : 24 * 3600 * 1000,
         portfolioValue: snap?.totalValue ?? config.initialCapital,
         startingCapital: config.initialCapital,
         pnl: stats.totalPnl,
