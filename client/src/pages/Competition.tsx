@@ -238,8 +238,23 @@ export default function Competition() {
     refetchInterval: 2000,
   });
 
-  // Build competition state
-  const comp = competitionData ?? buildDemoStatus();
+  // Build competition state — always safe, API data mapped onto demo defaults
+  const demo = buildDemoStatus();
+  const comp: CompetitionStatus = {
+    sessionStarted: competitionData?.sessionStarted ?? demo.sessionStarted,
+    startTime: competitionData?.startTime ?? demo.startTime,
+    currentTime: competitionData?.currentTime ?? demo.currentTime,
+    elapsed: competitionData?.elapsed ?? demo.elapsed,
+    remaining: competitionData?.remaining ?? demo.remaining,
+    portfolioValue: competitionData?.portfolioValue ?? demo.portfolioValue,
+    startingCapital: competitionData?.startingCapital ?? demo.startingCapital,
+    pnl: competitionData?.pnl ?? demo.pnl,
+    pnlPct: competitionData?.pnlPct ?? (competitionData as any)?.pnlPercent ?? demo.pnlPct,
+    winProbability: competitionData?.winProbability ?? demo.winProbability,
+    tradesExecuted: competitionData?.tradesExecuted ?? (competitionData as any)?.totalTrades ?? demo.tradesExecuted,
+    currentStreak: competitionData?.currentStreak ?? demo.currentStreak,
+    edgeScore: competitionData?.edgeScore ?? demo.edgeScore,
+  };
   const isDemo = !competitionData?.sessionStarted;
   const total24h = 24 * 3600 * 1000;
 
@@ -319,7 +334,7 @@ export default function Competition() {
                 {fmtPct(comp.pnlPct)} return
               </div>
               <div className="text-xs text-muted-foreground">
-                Portfolio: £{((comp.portfolioValue / comp.startingCapital) * 100).toFixed(2)} / £100 stake
+                Portfolio: £{(((comp.portfolioValue ?? 0) / (comp.startingCapital || 1)) * 100).toFixed(2)} / £100 stake
               </div>
             </div>
 
@@ -426,12 +441,12 @@ export default function Competition() {
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   <div className="space-y-0.5">
                     <span className="text-muted-foreground">Expected Slippage</span>
-                    <div className="font-mono font-semibold text-foreground">{execWindow.expectedSlippageBps.toFixed(2)} bps</div>
+                    <div className="font-mono font-semibold text-foreground">{safe(execWindow?.expectedSlippageBps, 2)} bps</div>
                   </div>
                   <div className="space-y-0.5">
                     <span className="text-muted-foreground">Optimal Side</span>
-                    <div className={`font-mono font-semibold ${execWindow.optimalSide === "buy" ? "gain" : execWindow.optimalSide === "sell" ? "loss" : "text-muted-foreground"}`}>
-                      {execWindow.optimalSide?.toUpperCase() ?? "NEUTRAL"}
+                    <div className={`font-mono font-semibold ${execWindow?.optimalSide === "buy" ? "gain" : execWindow?.optimalSide === "sell" ? "loss" : "text-muted-foreground"}`}>
+                      {execWindow?.optimalSide?.toUpperCase() ?? "NEUTRAL"}
                     </div>
                   </div>
                 </div>
@@ -448,16 +463,16 @@ export default function Competition() {
               <div className="border-t border-border pt-3 grid grid-cols-3 gap-2 text-xs">
                 <div>
                   <div className="text-muted-foreground">OFI</div>
-                  <div className={`font-mono font-bold ${ofi.ofi >= 0 ? "gain" : "loss"}`}>{ofi.ofi >= 0 ? "+" : ""}{ofi.ofi.toFixed(3)}</div>
+                  <div className={`font-mono font-bold ${(ofi?.ofi ?? 0) >= 0 ? "gain" : "loss"}`}>{(ofi?.ofi ?? 0) >= 0 ? "+" : ""}{safe(ofi?.ofi, 3)}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Spread</div>
-                  <div className="font-mono font-semibold text-foreground">{ofi.spreadBps.toFixed(2)}bps</div>
+                  <div className="font-mono font-semibold text-foreground">{safe(ofi?.spreadBps, 2)}bps</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Aggression</div>
-                  <div className={`font-mono font-semibold ${ofi.aggressionScore > 60 ? "gain" : ofi.aggressionScore < 40 ? "loss" : "text-foreground"}`}>
-                    {ofi.aggressionScore.toFixed(0)}%
+                  <div className={`font-mono font-semibold ${(ofi?.aggressionScore ?? 50) > 60 ? "gain" : (ofi?.aggressionScore ?? 50) < 40 ? "loss" : "text-foreground"}`}>
+                    {safe(ofi?.aggressionScore, 0)}%
                   </div>
                 </div>
               </div>
