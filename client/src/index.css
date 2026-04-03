@@ -1,0 +1,124 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Trading terminal — dark surface, electric green accent */
+    --background: 222 18% 8%;
+    --foreground: 210 14% 89%;
+
+    --card: 222 16% 11%;
+    --card-foreground: 210 14% 89%;
+
+    --popover: 222 16% 11%;
+    --popover-foreground: 210 14% 89%;
+
+    --primary: 160 100% 45%;
+    --primary-foreground: 222 18% 8%;
+
+    --secondary: 222 14% 16%;
+    --secondary-foreground: 210 10% 70%;
+
+    --muted: 222 14% 14%;
+    --muted-foreground: 215 8% 50%;
+
+    --accent: 222 14% 18%;
+    --accent-foreground: 210 14% 89%;
+
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 222 12% 20%;
+    --input: 222 12% 20%;
+    --ring: 160 100% 45%;
+
+    --radius: 0.5rem;
+
+    /* Chart colors */
+    --color-gain: 160 100% 45%;
+    --color-loss: 0 72% 55%;
+    --color-neutral: 215 8% 50%;
+    --color-buy-signal: 200 100% 60%;
+    --color-sell-signal: 30 100% 60%;
+    --color-ema-fast: 271 91% 65%;
+    --color-ema-slow: 38 100% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', 'JetBrains Mono', monospace, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  html, body, #root {
+    height: 100%;
+    overflow: hidden;
+  }
+}
+
+/* Tabular numbers for data */
+.tabular {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Gain / Loss colors */
+.gain { color: hsl(var(--color-gain)); }
+.loss { color: hsl(var(--color-loss)); }
+.neutral { color: hsl(var(--color-neutral)); }
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: hsl(var(--muted)); }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
+
+/* Pulse animation for live indicator */
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.live-dot {
+  animation: live-pulse 1.5s ease-in-out infinite;
+}
+
+/* Candle chart */
+.chart-container canvas { display: block; }
+
+/* Smooth number transitions */
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.count-animate { animation: countUp 0.3s ease-out; }
+
+/* Panel glow on hover */
+.panel-hover {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.panel-hover:hover {
+  box-shadow: 0 0 0 1px hsl(var(--primary) / 0.25), 0 4px 24px hsl(var(--primary) / 0.08);
+  border-color: hsl(var(--primary) / 0.35);
+}
+
+/* Signal badge glow */
+.signal-buy {
+  background: hsl(var(--color-gain) / 0.15);
+  color: hsl(var(--color-gain));
+  border: 1px solid hsl(var(--color-gain) / 0.3);
+}
+.signal-sell {
+  background: hsl(var(--color-loss) / 0.15);
+  color: hsl(var(--color-loss));
+  border: 1px solid hsl(var(--color-loss) / 0.3);
+}
+
+/* Grid lines on chart */
+.recharts-cartesian-grid line { stroke: hsl(var(--border)) !important; }
+.recharts-text { fill: hsl(var(--muted-foreground)) !important; font-size: 11px; }
