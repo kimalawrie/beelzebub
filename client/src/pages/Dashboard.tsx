@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/lib/queryClient";
-
+import { useToast } from "@/hooks/use-toast";
 import { TrendingUp, TrendingDown, DollarSign, Target, Zap, AlertTriangle, Wifi, WifiOff, Activity } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";

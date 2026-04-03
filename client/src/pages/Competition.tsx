@@ -494,16 +494,16 @@ export default function Competition() {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4 space-y-4">
-            {/* P&L */}
+            {/* P&L — scaled to £100 stake using % return */}
             <div className="text-center space-y-1">
-              <div className={`text-3xl font-bold font-mono tabular ${comp.pnl >= 0 ? "gain" : "loss"}`}>
-                {fmtGbp(comp.pnl * 0.01)} {/* Scale $10k sim to £100 stake */}
+              <div className={`text-3xl font-bold font-mono tabular ${comp.pnlPct >= 0 ? "gain" : "loss"}`}>
+                {fmtGbp((comp.pnlPct / 100) * 100)}
               </div>
               <div className={`text-sm font-mono ${comp.pnlPct >= 0 ? "gain" : "loss"}`}>
                 {fmtPct(comp.pnlPct)} return
               </div>
               <div className="text-xs text-muted-foreground">
-                Portfolio: £{(((comp.portfolioValue ?? 0) / (comp.startingCapital || 1)) * 100).toFixed(2)} / £100 stake
+                Portfolio: £{(100 + (comp.pnlPct / 100) * 100).toFixed(2)} / £100 stake
               </div>
             </div>
 
@@ -999,13 +999,172 @@ export default function Competition() {
         </Card>
       )}
 
-      {/* Demo notice */}
-      {isDemo && (
-        <div className="flex items-center gap-3 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs">
-          <AlertTriangle size={14} />
-          <span>Competition clock starts automatically when the wager begins. Data shown is based on simulated competition state.</span>
-        </div>
-      )}
+      {/* ── Auto-Tuner ────────────────────────────────────────────── */}
+      <TunerPanel />
     </div>
+  );
+}
+
+// ── Tuner Panel ───────────────────────────────────────────────────────────────
+
+interface TunerStatus {
+  running: boolean; progress: number; totalRuns: number; completedRuns: number;
+  status: "idle" | "running" | "complete" | "error";
+  bestParams: any | null; bestScore: number; symbol: string;
+  results: Array<{
+    rank: number; fitnessScore: number;
+    params: { emaFast: number; emaSlow: number; rsiOversold: number; rsiOverbought: number; stopLoss: number; takeProfit: number };
+    sharpe: number; winRate: number; profitFactor: number; maxDrawdown: number; totalReturn: number; totalTrades: number;
+  }>;
+  completedAt: string | null;
+}
+
+function TunerPanel() {
+  const qc = useQueryClient();
+  const [wsProgress, setWsProgress] = useState<number | null>(null);
+  const [newBest, setNewBest] = useState<any | null>(null);
+
+  const { data: tuner, refetch } = useQuery<TunerStatus>({
+    queryKey: ["/api/tuner/status"],
+    refetchInterval: tuner?.running ? 2000 : 10000,
+  });
+
+  // Listen for tuner events over WS
+  useEffect(() => {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${proto}//${window.location.host}/ws`);
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === "tuner_progress") setWsProgress(msg.data.progress);
+        if (msg.type === "tuner_best") { setNewBest(msg.data); refetch(); }
+        if (msg.type === "tuner_complete") { setWsProgress(100); refetch(); }
+      } catch {}
+    };
+    return () => ws.close();
+  }, []);
+
+  const runMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/tuner/run"),
+    onSuccess: () => refetch(),
+  });
+
+  const progress = wsProgress ?? tuner?.progress ?? 0;
+  const isRunning = tuner?.running ?? false;
+  const isDone = tuner?.status === "complete";
+  const top5 = tuner?.results?.slice(0, 5) ?? [];
+
+  return (
+    <Card className="border-border bg-card">
+      <CardHeader className="pb-2 pt-4 px-4">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Zap size={14} className="text-primary" />
+            Strategy Auto-Tuner
+            {isDone && <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-400/10 border border-green-400/30 text-green-400 font-bold">OPTIMISED</span>}
+          </CardTitle>
+          <button
+            onClick={() => runMutation.mutate()}
+            disabled={isRunning || runMutation.isPending}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+              isRunning
+                ? "border border-border text-muted-foreground cursor-not-allowed"
+                : "bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20"
+            }`}
+          >
+            {isRunning ? (
+              <><span className="animate-spin inline-block">⟳</span> Running {tuner?.completedRuns ?? 0}/{tuner?.totalRuns ?? 50}...</>
+            ) : isDone ? (
+              <>⟳ Re-run Tuner</>
+            ) : (
+              <><Zap size={11} /> Run 50 Sims</>
+            )}
+          </button>
+        </div>
+      </CardHeader>
+      <CardContent className="px-4 pb-4 space-y-4">
+        {/* What it does */}
+        {!isRunning && !isDone && (
+          <p className="text-xs text-muted-foreground">
+            Tests 50 parameter combinations against 90 days of real price data. Finds the EMA periods, RSI thresholds, stop-loss and take-profit that maximise your Sharpe ratio. Best params load automatically.
+          </p>
+        )}
+
+        {/* Progress bar */}
+        {(isRunning || isDone) && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">{isRunning ? `Testing combination ${tuner?.completedRuns ?? 0} of ${tuner?.totalRuns ?? 50}...` : `${tuner?.completedRuns ?? 0} combinations tested`}</span>
+              <span className="font-mono font-bold text-primary">{progress}%</span>
+            </div>
+            <div className="h-2 rounded-full bg-accent overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{ width: `${progress}%`, background: isDone ? "hsl(160 100% 45%)" : "hsl(var(--primary))" }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* New best alert */}
+        {isRunning && newBest && (
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-primary/10 border border-primary/20 text-xs">
+            <Zap size={11} className="text-primary flex-shrink-0" />
+            <span className="text-primary font-medium">New best: EMA {newBest.params?.emaFast}/{newBest.params?.emaSlow} · SL {newBest.params?.stopLoss}% TP {newBest.params?.takeProfit}% · Score {newBest.fitnessScore?.toFixed(3)}</span>
+          </div>
+        )}
+
+        {/* Best params summary */}
+        {isDone && tuner?.bestParams && (
+          <div className="p-3 rounded-lg bg-green-400/5 border border-green-400/20 space-y-2">
+            <div className="text-xs text-green-400 font-bold uppercase tracking-wider flex items-center gap-1"><Shield size={11} /> Best Parameters (auto-applied)</div>
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div><span className="text-muted-foreground">EMA</span> <span className="font-mono font-bold text-foreground">{tuner.bestParams.emaFast}/{tuner.bestParams.emaSlow}</span></div>
+              <div><span className="text-muted-foreground">RSI</span> <span className="font-mono font-bold text-foreground">{tuner.bestParams.rsiOversold}/{tuner.bestParams.rsiOverbought}</span></div>
+              <div><span className="text-muted-foreground">TP/SL</span> <span className="font-mono font-bold text-foreground">{tuner.bestParams.takeProfit}%/{tuner.bestParams.stopLoss}%</span></div>
+            </div>
+          </div>
+        )}
+
+        {/* Top 5 results */}
+        {top5.length > 0 && (
+          <div className="space-y-1">
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Top Results</div>
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="text-muted-foreground">
+                  <th className="text-left pb-1">#</th>
+                  <th className="text-left pb-1">EMA</th>
+                  <th className="text-left pb-1">SL/TP</th>
+                  <th className="text-right pb-1">Score</th>
+                  <th className="text-right pb-1">Return</th>
+                  <th className="text-right pb-1">Win%</th>
+                  <th className="text-right pb-1">Sharpe</th>
+                </tr>
+              </thead>
+              <tbody>
+                {top5.map((r, i) => (
+                  <tr key={i} className={`border-t border-border/50 ${i === 0 ? "text-primary" : "text-foreground"}`}>
+                    <td className="py-1 font-bold">{r.rank}</td>
+                    <td className="py-1 font-mono">{r.params.emaFast}/{r.params.emaSlow}</td>
+                    <td className="py-1 font-mono">{r.params.stopLoss}%/{r.params.takeProfit}%</td>
+                    <td className="py-1 text-right font-mono font-bold">{r.fitnessScore.toFixed(3)}</td>
+                    <td className={`py-1 text-right font-mono ${r.totalReturn >= 0 ? "gain" : "loss"}`}>{r.totalReturn >= 0 ? "+" : ""}{r.totalReturn.toFixed(1)}%</td>
+                    <td className="py-1 text-right font-mono">{r.winRate.toFixed(0)}%</td>
+                    <td className="py-1 text-right font-mono">{r.sharpe.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {isDone && (
+          <p className="text-[10px] text-muted-foreground">
+            Best parameters saved to config and will be used for all future trades. Run again before the competition to re-optimise on the most recent market data.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }

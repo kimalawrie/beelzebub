@@ -4,6 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage, db } from "./storage";
 import { runDemoSimulation, computeStats, fetchHistoricalData } from "./engine";
 import { startLiveTrader, stopLiveTrader, traderEvents, isLiveTraderRunning, getOpenPositionId } from "./livetrader";
+import { runTuner, getTunerState, tunerEvents } from "./tuner";
 import { getEngine, initAllEngines, rankCoins, getBestCoin, TOP_COINS } from "./orderflow";
 import { trades, portfolioSnapshots, priceCandles } from "@shared/schema";
 
@@ -46,6 +47,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
   traderEvents.on("position_update",d => broadcast("position_update", d));
   traderEvents.on("started",        () => broadcast("bot_started", {}));
   traderEvents.on("stopped",        () => broadcast("bot_stopped", {}));
+
+  // Tuner events
+  tunerEvents.on("progress",  d => broadcast("tuner_progress", d));
+  tunerEvents.on("new_best",  d => broadcast("tuner_best", d));
+  tunerEvents.on("complete",  d => broadcast("tuner_complete", d));
+  tunerEvents.on("started",   d => broadcast("tuner_started", d));
 
   // ── Bot Config ────────────────────────────────────────────────────────────
   app.get("/api/config", (_req, res) => {
@@ -240,6 +247,23 @@ export function registerRoutes(httpServer: Server, app: Express) {
         isConnected: ofiEngine.isConnected,
       });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Parameter Tuner ─────────────────────────────────────────────────
+  app.post("/api/tuner/run", async (req, res) => {
+    try {
+      const state = getTunerState();
+      if (state.running) return res.json({ status: "already_running", ...state });
+      const config = storage.getBotConfig()!;
+      const symbol = req.body?.symbol ?? config.symbol ?? "BTC";
+      res.json({ status: "started", symbol });
+      runTuner(symbol).catch(console.error); // async, don't await
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/tuner/status", (_req, res) => {
+    try { res.json(getTunerState()); }
+    catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
   // ── Multi-Coin Scanner ────────────────────────────────────────────────

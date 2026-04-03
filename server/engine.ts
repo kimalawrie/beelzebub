@@ -394,3 +394,112 @@ export function computeStats() {
     totalReturn, sharpe, initialCapital, finalValue,
   };
 }
+
+// ── Pure In-Memory Simulation (for tuner — no DB writes) ─────────────────────
+
+export function runSimulationWithParams(
+  rawCandles: InsertPriceCandle[],
+  params: {
+    emaFast: number; emaSlow: number;
+    rsiPeriod: number; rsiOverbought: number; rsiOversold: number;
+    stopLoss: number; takeProfit: number;
+  }
+): {
+  totalTrades: number; winRate: number; profitFactor: number;
+  maxDrawdown: number; totalReturn: number; sharpe: number;
+} {
+  const closes = rawCandles.map(c => c.close);
+  const ema9arr  = calcEMA(closes, params.emaFast);
+  const ema21arr = calcEMA(closes, params.emaSlow);
+  const rsiArr   = calcRSI(closes, params.rsiPeriod);
+  const macdData = calcMACD(closes, 12, 26, 9);
+
+  const initialCapital = 10000;
+  let cash = initialCapital;
+  let cryptoQty = 0;
+  let openEntryPrice = 0;
+  let realizedPnl = 0;
+  let peakValue = cash;
+  let maxDrawdown = 0;
+
+  const tradeReturns: number[] = [];
+  const wins: number[] = [];
+  const losses: number[] = [];
+  const portfolioValues: number[] = [cash];
+
+  for (let i = 0; i < rawCandles.length; i++) {
+    const c = rawCandles[i];
+    const signal = generateSignal(ema9arr, ema21arr, rsiArr, macdData, i, params.rsiOversold, params.rsiOverbought);
+
+    // Check SL/TP
+    if (cryptoQty > 0) {
+      const pnlPct = ((c.close - openEntryPrice) / openEntryPrice) * 100;
+      if (pnlPct <= -params.stopLoss || pnlPct >= params.takeProfit || signal === "sell") {
+        const fees = cryptoQty * c.close * 0.001;
+        const pnl = (c.close - openEntryPrice) * cryptoQty - fees;
+        cash += cryptoQty * c.close - fees;
+        cryptoQty = 0;
+        realizedPnl += pnl;
+        if (pnl > 0) wins.push(pnl); else losses.push(pnl);
+        tradeReturns.push(pnlPct);
+      }
+    }
+
+    // Open on buy signal
+    if (signal === "buy" && cryptoQty === 0 && cash > 0) {
+      const tradeSize = Math.min(cash * 0.95, cash * 0.95);
+      const fees = tradeSize * 0.001;
+      const qty = (tradeSize - fees) / c.close;
+      cash -= tradeSize;
+      cryptoQty = qty;
+      openEntryPrice = c.close;
+    }
+
+    const totalValue = cash + cryptoQty * c.close;
+    portfolioValues.push(totalValue);
+    if (totalValue > peakValue) peakValue = totalValue;
+    const dd = peakValue > 0 ? ((peakValue - totalValue) / peakValue) * 100 : 0;
+    if (dd > maxDrawdown) maxDrawdown = dd;
+  }
+
+  // Close any open position at end
+  if (cryptoQty > 0) {
+    const last = rawCandles[rawCandles.length - 1];
+    const fees = cryptoQty * last.close * 0.001;
+    const pnl = (last.close - openEntryPrice) * cryptoQty - fees;
+    cash += cryptoQty * last.close - fees;
+    if (pnl > 0) wins.push(pnl); else losses.push(pnl);
+  }
+
+  const totalTrades = wins.length + losses.length;
+  const winRate = totalTrades > 0 ? (wins.length / totalTrades) * 100 : 0;
+  const totalWins = wins.reduce((s, v) => s + v, 0);
+  const totalLosses = Math.abs(losses.reduce((s, v) => s + v, 0));
+  const profitFactor = totalLosses > 0 ? totalWins / totalLosses : 0;
+  const totalReturn = ((cash - initialCapital) / initialCapital) * 100;
+
+  // Sharpe from portfolio value returns
+  let sharpe = 0;
+  if (portfolioValues.length > 2) {
+    const returns = [];
+    for (let i = 1; i < portfolioValues.length; i++) {
+      returns.push((portfolioValues[i] - portfolioValues[i-1]) / portfolioValues[i-1]);
+    }
+    const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+    const std = Math.sqrt(returns.reduce((a, b) => a + (b - mean) ** 2, 0) / returns.length);
+    sharpe = std > 0 ? (mean / std) * Math.sqrt(252) : 0;
+  }
+
+  return { totalTrades, winRate, profitFactor, maxDrawdown, totalReturn, sharpe };
+}
+
+// ── Tuner candle builder (padded to 300+ candles for indicator warmup) ────────
+
+export async function buildTunerCandles(symbol: string = "BTC") {
+  const real = await fetchHistoricalData(symbol, 365);
+  const synthCount = Math.max(0, 300 - real.length);
+  const synth = synthCount > 0 && real.length > 0
+    ? generateSyntheticPrefix(symbol, real[0], synthCount)
+    : [];
+  return [...synth, ...real];
+}
